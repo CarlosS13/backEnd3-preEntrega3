@@ -50,6 +50,10 @@ class ProductRepository {
       { new: true, projection: DEFAULT_PROJECTION }
     ).lean();
   }
+
+  async insertMany(productsData) {
+    return Product.insertMany(productsData, { ordered: true });
+  }
 }
 
 export default new ProductRepository();

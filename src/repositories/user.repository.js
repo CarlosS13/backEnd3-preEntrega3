@@ -37,6 +37,10 @@ class UserRepository {
       { new: true, runValidators: true, projection: SAFE_USER_PROJECTION }
     ).lean();
   }
+
+  async insertMany(usersData) {
+    return User.insertMany(usersData, { ordered: true });
+  }
 }
 
 export default new UserRepository();
