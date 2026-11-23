@@ -96,6 +96,33 @@ Separar **Service** y **Repository** permite aplicar el principio de responsabil
 - **Repository (acceso a datos / Mongoose):** es la única capa que conoce Mongoose y ejecuta consultas contra MongoDB. Encapsula filtros por defecto (como excluir registros eliminados o inactivos), proyecciones de campos (`select` / `projection`), operaciones `insertMany` para la carga controlada y consultas CRUD sin tomar decisiones de negocio ni manejar `req` o `res`. De este modo, si cambia la forma de consultar o persistir datos en MongoDB, el impacto queda contenido en el Repository y no se filtra hacia el resto de la aplicación.
 - **Service (lógica de negocio y mocking):** concentra las reglas del dominio de ShipNow y la construcción coherente de datos simulados: validar campos obligatorios, evitar duplicados de `sku` o `email`, usar las constantes de `src/utils/constants.js` para roles (`USER`, `COURIER`, `ADMIN`), estados y prioridades de pedidos y estados de entregas, y respetar las relaciones entre entidades (pedido asociado a un usuario/cliente y entrega asociada a un pedido y, cuando corresponde, a un repartidor con rol `COURIER`). Al no depender directamente de Mongoose ni del protocolo HTTP, la lógica resulta más clara, mantenible y fácil de probar.
 
+## Manejo centralizado de errores
+
+Las rutas y controllers derivan cualquier excepción hacia el middleware global (src/middlewares/errorHandler.js), que es el único punto encargado de construir y enviar las respuestas de error. Los services detectan reglas del dominio y lanzan errores tipados (AppError y clases específicas en src/errors/AppError.js) respaldados por el diccionario en src/errors/errorDictionary.js, mientras que el middleware también normaliza errores técnicos (como CastError, ValidationError o claves duplicadas de Mongoose y JSON malformado).
+
+## Estructura uniforme de respuesta de error
+
+Todas las respuestas de error siguen el mismo formato:
+
+```
+{
+  "success": false,
+  "error": {
+    "code": "CODIGO_DE_ERROR",
+    "message": "Descripción legible del problema",
+    "details": null
+  }
+}
+```
+
+- success: siempre false ante un error.
+
+- error.code: identificador semántico definido en el diccionario de errores (por ejemplo: USER_NOT_FOUND, PRODUCT_NOT_FOUND, ORDER_NOT_FOUND, DELIVERY_NOT_FOUND, INVALID_ID, INVALID_STATUS, INVALID_ROLE, INVALID_MOCK_QTY, INVALID_MOCK_ENTITY, DUPLICATE_RESOURCE, SEED_FAILED, INTERNAL_ERROR).
+
+- error.message: mensaje claro del error ocurrido.
+
+- error.details: información adicional contextual (como campos o valores conflictivos) o null cuando no aplica.
+
 ## Endpoints disponibles
 
 - `GET /health` — Verificación básica del estado del servicio.
@@ -141,6 +168,27 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/mocks/seed?entity
 ```
 
 Entidades soportadas en `entity` para `POST /api/mocks/seed`: `users` (por defecto), `couriers`, `products`, `orders`, `deliveries` y `all`.
+
+### 3. Probar casos inválidos y manejo de errores
+
+Podés verificar que las validaciones y el middleware centralizado respondan con la estructura uniforme ante entradas inválidas o fallas:
+
+```powershell
+# Cantidad negativa o cero en mocks (espera 400 - INVALID_MOCK_QTY)
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/users?qty=-3"
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/orders?qty=0"
+
+# Entidad o rol inválido en mocks (espera 400 - INVALID_MOCK_ENTITY / INVALID_ROLE)
+Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/mocks/seed?entity=inexistente&qty=2"
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/users?role=INVALIDO"
+
+# ID con formato inválido (espera 400 - INVALID_ID) o recurso inexistente (espera 404 - *_NOT_FOUND)
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/users/123-invalido"
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/products/65f1a2b3c4d5e6f7a8b9c0d1"
+
+# Falla en carga a MongoDB (espera 500 - SEED_FAILED si MongoDB no está disponible o falla la inserción)
+Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/mocks/seed?entity=users&qty=5"
+```
 
 ## Subir el proyecto a GitHub
 

@@ -1,8 +1,10 @@
-// src/app.js
 import express from "express";
 import productRoutes from "./routes/product.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import mockRoutes from "./routes/mock.routes.js";
+import { errorHandler } from "./middlewares/errorHandler.js";
+import { NotFoundError } from "./errors/AppError.js";
+import { ERROR_CODES } from "./errors/errorDictionary.js";
 import { HTTP_STATUS } from "./utils/constants.js";
 
 const app = express();
@@ -17,17 +19,15 @@ app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/mocks", mockRoutes);
 
-app.use((err, req, res, next) => {
-  if (err.name === "CastError") {
-    return res
-      .status(HTTP_STATUS.BAD_REQUEST)
-      .json({ error: "Identificador inválido" });
-  }
-
-  const statusCode = err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
-  res.status(statusCode).json({
-    error: err.message || "Error interno del servidor",
-  });
+app.use((req, res, next) => {
+  next(
+    new NotFoundError(
+      ERROR_CODES.VALIDATION_ERROR,
+      `No se encontró la ruta ${req.method} ${req.originalUrl}`
+    )
+  );
 });
+
+app.use(errorHandler);
 
 export default app;
