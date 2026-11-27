@@ -4,6 +4,8 @@ import userRepository from "../repositories/user.repository.js";
 import productRepository from "../repositories/product.repository.js";
 import orderRepository from "../repositories/order.repository.js";
 import deliveryRepository from "../repositories/delivery.repository.js";
+import { InvalidMockError, SeedError } from "../errors/AppError.js";
+import { ERROR_CODES } from "../errors/errorDictionary.js";
 import {
   DELIVERY_STATUS,
   ORDER_PRIORITY,
@@ -13,19 +15,13 @@ import {
   USER_STATUS,
 } from "../utils/constants.js";
 
-function createServiceError(message, statusCode = 400) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
-
 function parseQuantity(rawQty, defaultQty = 5, maxQty = 100) {
   if (rawQty === undefined) return defaultQty;
   const parsed = Number(rawQty);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > maxQty) {
-    throw createServiceError(
-      `El parámetro qty debe ser un entero entre 1 y ${maxQty}`,
-      400
+    throw new InvalidMockError(
+      ERROR_CODES.INVALID_MOCK_QTY,
+      `El parámetro qty debe ser un entero entre 1 y ${maxQty}`
     );
   }
   return parsed;
@@ -150,9 +146,9 @@ class MockService {
 
   previewUsers(qty, role) {
     if (role && !Object.values(USER_ROLES).includes(role)) {
-      throw createServiceError(
-        `Rol inválido. Valores permitidos: ${Object.values(USER_ROLES).join(", ")}`,
-        400
+      throw new InvalidMockError(
+        ERROR_CODES.INVALID_ROLE,
+        `Rol inválido. Valores permitidos: ${Object.values(USER_ROLES).join(", ")}`
       );
     }
     return this.buildMockUsers(qty, role || null).map(({ _id, ...rest }) => rest);
@@ -168,57 +164,79 @@ class MockService {
 
   async seedCollection(entity = "users", qty = 10) {
     const count = parseQuantity(qty);
-    const normalizedEntity = entity.toLowerCase();
+    const normalizedEntity = String(entity || "").toLowerCase();
 
-    if (normalizedEntity === "users" || normalizedEntity === "usuarios") {
-      const users = this.buildMockUsers(count);
-      const inserted = await userRepository.insertMany(users);
-      return { insertados: inserted.length, coleccion: "usuarios" };
+    const validEntities = [
+      "users",
+      "usuarios",
+      "couriers",
+      "repartidores",
+      "products",
+      "productos",
+      "orders",
+      "pedidos",
+      "deliveries",
+      "entregas",
+      "all",
+      "completo",
+    ];
+
+    if (!validEntities.includes(normalizedEntity)) {
+      throw new InvalidMockError(
+        ERROR_CODES.INVALID_MOCK_ENTITY,
+        "Entidad inválida para seed. Opciones: users, couriers, products, orders, deliveries, all"
+      );
     }
 
-    if (normalizedEntity === "couriers" || normalizedEntity === "repartidores") {
-      const couriers = this.buildMockUsers(count, USER_ROLES.COURIER);
-      const inserted = await userRepository.insertMany(couriers);
-      return { insertados: inserted.length, coleccion: "repartidores" };
-    }
+    try {
+      if (normalizedEntity === "users" || normalizedEntity === "usuarios") {
+        const users = this.buildMockUsers(count);
+        const inserted = await userRepository.insertMany(users);
+        return { insertados: inserted.length, coleccion: "usuarios" };
+      }
 
-    if (normalizedEntity === "products" || normalizedEntity === "productos") {
-      const products = this.buildMockProducts(count);
-      const inserted = await productRepository.insertMany(products);
-      return { insertados: inserted.length, coleccion: "productos" };
-    }
+      if (normalizedEntity === "couriers" || normalizedEntity === "repartidores") {
+        const couriers = this.buildMockUsers(count, USER_ROLES.COURIER);
+        const inserted = await userRepository.insertMany(couriers);
+        return { insertados: inserted.length, coleccion: "repartidores" };
+      }
 
-    if (normalizedEntity === "orders" || normalizedEntity === "pedidos") {
-      const customers = await userRepository.insertMany(
-        this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.USER)
-      );
-      const products = await productRepository.insertMany(
-        this.buildMockProducts(Math.max(3, Math.ceil(count / 2)))
-      );
-      const orders = this.buildMockOrders(count, customers, products);
-      const inserted = await orderRepository.insertMany(orders);
-      return { insertados: inserted.length, coleccion: "pedidos" };
-    }
+      if (normalizedEntity === "products" || normalizedEntity === "productos") {
+        const products = this.buildMockProducts(count);
+        const inserted = await productRepository.insertMany(products);
+        return { insertados: inserted.length, coleccion: "productos" };
+      }
 
-    if (normalizedEntity === "deliveries" || normalizedEntity === "entregas") {
-      const customers = await userRepository.insertMany(
-        this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.USER)
-      );
-      const couriers = await userRepository.insertMany(
-        this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.COURIER)
-      );
-      const products = await productRepository.insertMany(
-        this.buildMockProducts(Math.max(3, Math.ceil(count / 2)))
-      );
-      const orders = await orderRepository.insertMany(
-        this.buildMockOrders(count, customers, products)
-      );
-      const deliveries = this.buildMockDeliveries(count, orders, couriers);
-      const inserted = await deliveryRepository.insertMany(deliveries);
-      return { insertados: inserted.length, coleccion: "entregas" };
-    }
+      if (normalizedEntity === "orders" || normalizedEntity === "pedidos") {
+        const customers = await userRepository.insertMany(
+          this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.USER)
+        );
+        const products = await productRepository.insertMany(
+          this.buildMockProducts(Math.max(3, Math.ceil(count / 2)))
+        );
+        const orders = this.buildMockOrders(count, customers, products);
+        const inserted = await orderRepository.insertMany(orders);
+        return { insertados: inserted.length, coleccion: "pedidos" };
+      }
 
-    if (normalizedEntity === "all" || normalizedEntity === "completo") {
+      if (normalizedEntity === "deliveries" || normalizedEntity === "entregas") {
+        const customers = await userRepository.insertMany(
+          this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.USER)
+        );
+        const couriers = await userRepository.insertMany(
+          this.buildMockUsers(Math.max(2, Math.ceil(count / 2)), USER_ROLES.COURIER)
+        );
+        const products = await productRepository.insertMany(
+          this.buildMockProducts(Math.max(3, Math.ceil(count / 2)))
+        );
+        const orders = await orderRepository.insertMany(
+          this.buildMockOrders(count, customers, products)
+        );
+        const deliveries = this.buildMockDeliveries(count, orders, couriers);
+        const inserted = await deliveryRepository.insertMany(deliveries);
+        return { insertados: inserted.length, coleccion: "entregas" };
+      }
+
       const customers = await userRepository.insertMany(
         this.buildMockUsers(count, USER_ROLES.USER)
       );
@@ -245,12 +263,15 @@ class MockService {
         },
         coleccion: "completo",
       };
+    } catch (error) {
+      if (error instanceof InvalidMockError) {
+        throw error;
+      }
+      throw new SeedError(
+        `Error al cargar datos de prueba para '${normalizedEntity}'`,
+        { entity: normalizedEntity, reason: error.message }
+      );
     }
-
-    throw createServiceError(
-      "Entidad inválida para seed. Opciones: users, couriers, products, orders, deliveries, all",
-      400
-    );
   }
 }
 

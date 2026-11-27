@@ -1,6 +1,7 @@
 import { HTTP_STATUS } from "../utils/constants.js";
 
 export const ERROR_CODES = Object.freeze({
+  NOT_FOUND: "NOT_FOUND",
   VALIDATION_ERROR: "VALIDATION_ERROR",
   INVALID_ID: "INVALID_ID",
   INVALID_STATUS: "INVALID_STATUS",
@@ -17,6 +18,10 @@ export const ERROR_CODES = Object.freeze({
 });
 
 export const ERROR_DICTIONARY = Object.freeze({
+  [ERROR_CODES.NOT_FOUND]: {
+    statusCode: HTTP_STATUS.NOT_FOUND,
+    message: "Recurso o ruta no encontrada",
+  },
   [ERROR_CODES.VALIDATION_ERROR]: {
     statusCode: HTTP_STATUS.BAD_REQUEST,
     message: "Datos de entrada inválidos",

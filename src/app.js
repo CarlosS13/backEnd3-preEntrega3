@@ -22,7 +22,7 @@ app.use("/api/mocks", mockRoutes);
 app.use((req, res, next) => {
   next(
     new NotFoundError(
-      ERROR_CODES.VALIDATION_ERROR,
+      ERROR_CODES.NOT_FOUND,
       `No se encontró la ruta ${req.method} ${req.originalUrl}`
     )
   );

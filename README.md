@@ -1,6 +1,6 @@
-# ShipNow API — Pre-entrega Módulo 2 (Mocking y carga de datos)
+# ShipNow API — Pre-entrega Módulo 3 (Manejo profesional de errores)
 
-API de **ShipNow** organizada bajo una arquitectura por capas (**Controller → Service → Repository**), con validación de variables de entorno al arranque, constantes inmutables de dominio y un módulo de **mocking** y **carga controlada de datos de prueba (`seed`)** para usuarios, repartidores, productos, pedidos y entregas.
+API de **ShipNow** organizada bajo una arquitectura por capas (**Controller → Service → Repository**), con validación de variables de entorno al arranque, constantes inmutables de dominio, módulo de **mocking** y **carga controlada de datos de prueba (`seed`)** y un **sistema centralizado de manejo de errores** mediante errores personalizados, diccionario de errores y middleware global.
 
 ## Estructura del proyecto
 
@@ -16,30 +16,35 @@ shipnow-api/
     ├── config/
     │   ├── index.js
     │   └── database.js
-    ├── utils/
-    │   └── constants.js
-    ├── models/
-    │   ├── Product.js
-    │   ├── User.js
-    │   ├── Order.js
-    │   └── Delivery.js
-    ├── repositories/
-    │   ├── product.repository.js
-    │   ├── user.repository.js
-    │   ├── order.repository.js
-    │   └── delivery.repository.js
-    ├── services/
-    │   ├── product.service.js
-    │   ├── user.service.js
-    │   └── mock.service.js
     ├── controllers/
+    │   ├── mock.controller.js
     │   ├── product.controller.js
-    │   ├── user.controller.js
-    │   └── mock.controller.js
-    └── routes/
-        ├── product.routes.js
-        ├── user.routes.js
-        └── mock.routes.js
+    │   └── user.controller.js
+    ├── errors/
+    │   ├── AppError.js
+    │   └── errorDictionary.js
+    ├── middlewares/
+    │   └── errorHandler.js
+    ├── models/
+    │   ├── Delivery.js
+    │   ├── Order.js
+    │   ├── Product.js
+    │   └── User.js
+    ├── repositories/
+    │   ├── delivery.repository.js
+    │   ├── order.repository.js
+    │   ├── product.repository.js
+    │   └── user.repository.js
+    ├── routes/
+    │   ├── mock.routes.js
+    │   ├── product.routes.js
+    │   └── user.routes.js
+    ├── services/
+    │   ├── mock.service.js
+    │   ├── product.service.js
+    │   └── user.service.js
+    └── utils/
+        └── constants.js
 ```
 
 ## Cómo correr el proyecto localmente
@@ -51,8 +56,8 @@ shipnow-api/
 ### 2. Clonar el repositorio e instalar dependencias
 
 ```bash
-git clone <URL_DE_TU_REPOSITORIO>
-cd shipnow-api
+git clone https://github.com/CarlosS13/backEnd3-preEntrega3.git
+cd backEnd3-preEntrega3
 npm install
 ```
 
@@ -98,13 +103,13 @@ Separar **Service** y **Repository** permite aplicar el principio de responsabil
 
 ## Manejo centralizado de errores
 
-Las rutas y controllers derivan cualquier excepción hacia el middleware global (src/middlewares/errorHandler.js), que es el único punto encargado de construir y enviar las respuestas de error. Los services detectan reglas del dominio y lanzan errores tipados (AppError y clases específicas en src/errors/AppError.js) respaldados por el diccionario en src/errors/errorDictionary.js, mientras que el middleware también normaliza errores técnicos (como CastError, ValidationError o claves duplicadas de Mongoose y JSON malformado).
+Las rutas y controllers derivan cualquier excepción hacia el middleware global (`src/middlewares/errorHandler.js`), que es el único punto encargado de construir y enviar las respuestas de error. Los `services` (y el fallback de ruta inexistente en `src/app.js`) lanzan errores tipados (`AppError`, `ValidationError`, `NotFoundError`, `ConflictError`, `InvalidMockError` y `SeedError` en `src/errors/AppError.js`) respaldados por `ERROR_CODES` y `ERROR_DICTIONARY` en `src/errors/errorDictionary.js`, mientras que el middleware también normaliza errores técnicos de Mongoose o JSON malformado.
 
 ## Estructura uniforme de respuesta de error
 
 Todas las respuestas de error siguen el mismo formato:
 
-```
+```json
 {
   "success": false,
   "error": {
@@ -115,13 +120,10 @@ Todas las respuestas de error siguen el mismo formato:
 }
 ```
 
-- success: siempre false ante un error.
-
-- error.code: identificador semántico definido en el diccionario de errores (por ejemplo: USER_NOT_FOUND, PRODUCT_NOT_FOUND, ORDER_NOT_FOUND, DELIVERY_NOT_FOUND, INVALID_ID, INVALID_STATUS, INVALID_ROLE, INVALID_MOCK_QTY, INVALID_MOCK_ENTITY, DUPLICATE_RESOURCE, SEED_FAILED, INTERNAL_ERROR).
-
-- error.message: mensaje claro del error ocurrido.
-
-- error.details: información adicional contextual (como campos o valores conflictivos) o null cuando no aplica.
+- `success`: siempre `false` ante un error.
+- `error.code`: identificador semántico definido en `src/errors/errorDictionary.js` (`NOT_FOUND`, `VALIDATION_ERROR`, `INVALID_ID`, `INVALID_STATUS`, `INVALID_ROLE`, `INVALID_MOCK_QTY`, `INVALID_MOCK_ENTITY`, `USER_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `ORDER_NOT_FOUND`, `DELIVERY_NOT_FOUND`, `DUPLICATE_RESOURCE`, `SEED_FAILED`, `INTERNAL_ERROR`).
+- `error.message`: mensaje claro del error ocurrido.
+- `error.details`: información adicional contextual (como campos, entidad o motivo) o `null` cuando no aplica.
 
 ## Endpoints disponibles
 
@@ -174,29 +176,21 @@ Entidades soportadas en `entity` para `POST /api/mocks/seed`: `users` (por defec
 Podés verificar que las validaciones y el middleware centralizado respondan con la estructura uniforme ante entradas inválidas o fallas:
 
 ```powershell
-# Cantidad negativa o cero en mocks (espera 400 - INVALID_MOCK_QTY)
+# Ruta inexistente (espera HTTP 404 - code: NOT_FOUND)
+Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/ruta-inexistente"
+
+# Cantidad negativa o cero en mocks (espera HTTP 400 - code: INVALID_MOCK_QTY)
 Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/users?qty=-3"
 Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/orders?qty=0"
 
-# Entidad o rol inválido en mocks (espera 400 - INVALID_MOCK_ENTITY / INVALID_ROLE)
+# Entidad o rol inválido en mocks (espera HTTP 400 - code: INVALID_MOCK_ENTITY / INVALID_ROLE)
 Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/mocks/seed?entity=inexistente&qty=2"
 Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/mocks/users?role=INVALIDO"
 
-# ID con formato inválido (espera 400 - INVALID_ID) o recurso inexistente (espera 404 - *_NOT_FOUND)
+# ID con formato inválido (espera HTTP 400 - code: INVALID_ID) o recurso inexistente (espera HTTP 404 - code: PRODUCT_NOT_FOUND)
 Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/users/123-invalido"
 Invoke-RestMethod -Method Get -Uri "http://localhost:4000/api/products/65f1a2b3c4d5e6f7a8b9c0d1"
 
-# Falla en carga a MongoDB (espera 500 - SEED_FAILED si MongoDB no está disponible o falla la inserción)
+# Falla en carga a MongoDB (espera HTTP 500 - code: SEED_FAILED si MongoDB no está disponible o falla la inserción)
 Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/mocks/seed?entity=users&qty=5"
-```
-
-## Subir el proyecto a GitHub
-
-Antes de hacer commit y push, verificá con `git status` que ni `node_modules/` ni `.env` estén incluidos (y que `.env.example` sí esté presente):
-
-```powershell
-git status
-git add .
-git commit -m "feat(mocks): modulo de mocking y carga controlada de datos para ShipNow"
-git push -u origin main
 ```
